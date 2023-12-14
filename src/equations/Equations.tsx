@@ -1,5 +1,5 @@
 import Equation, {CreateEquationDto, equationFetcher} from "./Equation.ts";
-import React, {useEffect, useState} from "react";
+import React, {useContext, useEffect, useState} from "react";
 import {Button, TextField} from "@mui/material";
 import {RangeFilter, SearchFilter, TraitFilter} from "../filtering/FilteringComponents.tsx";
 import {Add, Close, Delete} from "@mui/icons-material";
@@ -31,6 +31,7 @@ function Header() {
 
 function Filters() {
     const {equations} = React.useContext(EquationsContext);
+    console.log(equations);
     return (
         <div className="w-1/5 flex flex-col items-center gap-4">
             <h2 className="font-bold">Filters</h2>
@@ -38,7 +39,8 @@ function Filters() {
                 <SearchFilter filterContext={FiltersContext}/>
                 <RangeFilter
                     rangeName="solutionsCount"
-                    min={0}
+                    min={equations.sort((a, b) =>
+                        a.solutions.length - b.solutions.length)[0]?.solutions.length ?? 0}
                     max={equations.sort((a, b) =>
                         b.solutions.length - a.solutions.length)[0]?.solutions.length ?? 1}
                     label = "Number of solutions"
@@ -110,7 +112,8 @@ function AddEquationCard() {
 }
 
 function EquationCard(props: { equation: Equation }) {
-    const {equations, setEquations} = React.useContext(EquationsContext);
+    const {setEquations} = React.useContext(EquationsContext);
+    const {filters, setFilters} = useContext(FiltersContext);
 
     const [isRootInputFieldVisible, setRootInputFieldVisible]
         = useState(false);
@@ -118,7 +121,19 @@ function EquationCard(props: { equation: Equation }) {
     async function deleteEquation() {
         const isDeleted = await equationFetcher.delete(props.equation.id);
         if (isDeleted) {
-            setEquations([...equations.filter(equation => equation.id != props.equation.id)]);
+            setEquations((equations) => {
+                const newEq = [...equations.filter(equation => equation.id != props.equation.id)]
+                if (filters.has("solutionsCount")) {
+                    setFilters(new Map(filters.set("solutionsCount",
+                        [Math.max((newEq.sort((a, b) =>
+                            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                            // @ts-expect-error
+                            a.solutions.length - b.solutions.length)[0]?.solutions.length ?? 0), filters.get("solutionsCount")[0]).toString(),
+                            (newEq.sort((a, b) =>
+                                b.solutions.length - a.solutions.length)[0]?.solutions.length ?? 1).toString()])));
+                }
+                return newEq;
+            });
         } else {
             alert("Failed to delete equation");
         }
@@ -134,6 +149,15 @@ function EquationCard(props: { equation: Equation }) {
         const isValid = await equationFetcher.tryAddSolution(props.equation.id, root);
         if (isValid) {
             props.equation.solutions.push(root);
+            if (filters.has("solutionsCount")) {
+                if (parseInt((filters.get("solutionsCount") as string[])[1]) < props.equation.solutions.length) {
+                    setFilters(new Map(filters.set("solutionsCount",
+                        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                        // @ts-expect-error
+                        [filters.get("solutionsCount")[0],
+                            props.equation.solutions.length.toString()])));
+                }
+            }
             setRootInputFieldVisible(false);
         } else {
             alert("Invalid root");
@@ -239,7 +263,8 @@ function EquationsPage() {
             <div className="w-screen flex overflow-x-hidden">
                 <EquationsContext.Provider value={{equations, setEquations}}>
                     <FiltersContext.Provider value={{filters, setFilters}}>
-                        <Filters/>
+                        {equations.length > 0 && <Filters/>}
+                        {equations.length == 0 && <div className="w-1/5 flex flex-col items-center gap-4"></div>}
                         <div className="w-4/5 max-w-5/6 flex justify-center mb-8">
                             <Equations/>
                         </div>
